@@ -74,6 +74,15 @@ func run(cfg *config.Config, logger *slog.Logger) error {
 	tagRepo := repository.NewTagRepository(db)
 	reviewRepo := repository.NewReviewRecordRepository(db)
 	auditRepo := repository.NewAuditLogRepository(db)
+	sharedCredRepo := repository.NewSharedCredentialRepository(db)
+	sharedCallLogRepo := repository.NewSharedCallLogRepository(db)
+
+	if err := sharedCredRepo.EnsureIndexes(ctx); err != nil {
+		return err
+	}
+	if err := sharedCallLogRepo.EnsureIndexes(ctx); err != nil {
+		return err
+	}
 
 	jwtManager := util.NewJWTManager(cfg.JWT.Secret, cfg.JWT.Issuer, cfg.JWT.ExpiresIn)
 	authService := service.NewAuthService(userRepo, roleRepo, jwtManager, logger)
@@ -87,22 +96,25 @@ func run(cfg *config.Config, logger *slog.Logger) error {
 	tagService := service.NewTagService(tagRepo, logger)
 	reviewService := service.NewReviewService(reviewRepo, assetRepo, logger)
 	auditService := service.NewAuditService(auditRepo, logger)
+	sharedCredentialService := service.NewSharedCredentialService(sharedCredRepo, sharedCallLogRepo, redisClient, logger)
 
 	rateLimiter := middleware.NewRateLimiter(redisClient, logger)
 
 	handlers := router.Handlers{
-		Health:     handler.NewHealthHandler(mongoClient.Client, redisClient.Client),
-		Auth:       handler.NewAuthHandler(authService),
-		Asset:      handler.NewAssetHandler(assetService),
-		Category:   handler.NewCategoryHandler(categoryService),
-		Collection: handler.NewCollectionHandler(collectionService),
-		Download:   handler.NewDownloadHandler(downloadService),
-		Tag:        handler.NewTagHandler(tagService),
-		Review:     handler.NewReviewHandler(reviewService),
-		Audit:      handler.NewAuditHandler(auditService),
+		Health:           handler.NewHealthHandler(mongoClient.Client, redisClient.Client),
+		Auth:             handler.NewAuthHandler(authService),
+		Asset:            handler.NewAssetHandler(assetService),
+		Category:         handler.NewCategoryHandler(categoryService),
+		Collection:       handler.NewCollectionHandler(collectionService),
+		Download:         handler.NewDownloadHandler(downloadService),
+		Tag:              handler.NewTagHandler(tagService),
+		Review:           handler.NewReviewHandler(reviewService),
+		Audit:            handler.NewAuditHandler(auditService),
+		SharedCredential: handler.NewSharedCredentialAdminHandler(sharedCredentialService),
+		Shared:           handler.NewSharedHandler(assetService, downloadService),
 	}
 
-	engine := router.New(handlers, cfg, jwtManager, rateLimiter, mongoClient, redisClient, logger)
+	engine := router.New(handlers, cfg, jwtManager, rateLimiter, mongoClient, redisClient, sharedCredentialService, logger)
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
 		Handler:      engine,

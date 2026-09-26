@@ -23,7 +23,26 @@
     "/collections/{id}/assets/{assetId}": { "delete": { "summary": "移除素材", "tags": ["collection"] } },
     "/collections/{id}/members": { "post": { "summary": "添加协作成员", "tags": ["collection"] } },
     "/downloads": { "get": { "summary": "下载记录", "tags": ["download"] } },
+    "/shared-credentials": {
+      "get": { "summary": "团队共享凭据列表 (Admin，仅名称/范围/额度/末四位)", "tags": ["shared-credential"] },
+      "post": { "summary": "签发团队共享凭据 (Admin，明文仅返回一次)", "tags": ["shared-credential"] }
+    },
+    "/shared-credentials/{id}": { "delete": { "summary": "撤销共享凭据，立即生效 (Admin)", "tags": ["shared-credential"] } },
+    "/shared-credentials/{id}/call-logs": { "get": { "summary": "凭据调用记录：凭据/路径/结果/时间 (Admin)", "tags": ["shared-credential"] } },
+    "/shared/assets": { "get": { "summary": "共享-只读素材 (assets:read，受每日额度限制)", "tags": ["shared"] } },
+    "/shared/assets/hot": { "get": { "summary": "共享-热度素材 (assets:read)", "tags": ["shared"] } },
+    "/shared/assets/{id}": { "get": { "summary": "共享-素材详情 (assets:read)", "tags": ["shared"] } },
+    "/shared/assets/{id}/download": { "post": { "summary": "共享-登记下载 (downloads:write)", "tags": ["shared"] } },
+    "/shared/collections": { "get": { "summary": "共享-收藏夹列表 (collections:write)", "tags": ["shared"] }, "post": { "summary": "共享-创建收藏夹 (collections:write)", "tags": ["shared"] } },
+    "/shared/collections/{id}": { "get": { "summary": "共享-收藏夹详情 (collections:write)", "tags": ["shared"] }, "put": { "summary": "共享-更新收藏夹 (collections:write)", "tags": ["shared"] } },
+    "/shared/collections/{id}/assets": { "post": { "summary": "共享-收藏夹加入素材 (collections:write)", "tags": ["shared"] } },
+    "/shared/collections/{id}/assets/{assetId}": { "delete": { "summary": "共享-收藏夹移除素材 (collections:write)", "tags": ["shared"] } },
     "/audit-logs": { "get": { "summary": "审计日志 (Admin)", "tags": ["audit"] } }
   },
-  "components": { "securitySchemes": { "BearerAuth": { "type": "http", "scheme": "bearer" } } }
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": { "type": "http", "scheme": "bearer" },
+      "ApiKeyAuth": { "type": "apiKey", "in": "header", "name": "X-Api-Key" }
+    }
+  }
 }

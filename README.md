@@ -40,6 +40,7 @@ go run ./cmd/server
 - 标签管理：分类标签、使用次数统计、标签云
 - 审核流程：Moderator/Admin 审核，Approved / Rejected / NeedsRevision
 - 权限共享与 RBAC：Admin / Moderator / Uploader / Viewer，Commercial 许可素材需额外权限
+- 团队共享凭据：向外部服务开放素材能力而无需交付员工登录凭据；管理员按 `assets:read`（只读素材）/`collections:write`（维护收藏夹）/`downloads:write`（登记下载）分别授权并设置每日调用上限；明文密钥仅在创建时返回一次，列表只展示名称、范围、额度与末四位；外部请求经 `X-Api-Key` 调用 `/shared/*`，越权 403、过期/撤销 401、额度用完 429，每次调用记录凭据、路径、结果与时间，撤销即时生效
 - 审计日志：素材上传、审核、下载、许可变更全程留痕
 - 接口限流：下载每 IP 每分钟 10 次、上传每 IP 每小时 20 次（Redis 计数）
 
@@ -97,9 +98,33 @@ go run ./cmd/server
 | DELETE | /collections/:id/assets/:assetId | 收藏夹移除素材 |
 | POST | /collections/:id/members | 添加协作成员 |
 | GET | /downloads | 下载记录 |
+| GET/POST | /shared-credentials | 共享凭据列表 / 签发（Admin） |
+| DELETE | /shared-credentials/:id | 撤销共享凭据（Admin，立即生效） |
+| GET | /shared-credentials/:id/call-logs | 凭据调用记录（Admin） |
+| GET | /shared/assets、/shared/assets/hot、/shared/assets/:id | 外部共享：只读已发布素材（需 assets:read） |
+| POST | /shared/assets/:id/download | 外部共享：登记下载（需 downloads:write） |
+| GET/POST/PUT | /shared/collections 及 /assets 子路由 | 外部共享：维护团队收藏夹（需 collections:write） |
 | GET | /audit-logs | 审计日志（Admin） |
 
 统一响应格式：`{ "code": 0, "message": "ok", "data": ... }`。
+
+### 团队共享凭据用法
+
+管理员通过 JWT 登录后签发凭据（`scopes` 可多选，`daily_limit` 为每日调用上限，`expires_at` 可选）：
+
+```bash
+curl -X POST http://localhost:19310/api/v1/shared-credentials \
+  -H "Authorization: Bearer <管理员 JWT>" -H "Content-Type: application/json" \
+  -d '{"name":"外部设计平台","scopes":["assets:read","downloads:write"],"daily_limit":1000,"expires_at":"2027-01-01T00:00:00Z"}'
+```
+
+响应中的 `key`（形如 `ahk_...`）**仅展示这一次**，服务端只存 SHA-256 哈希与末四位。外部服务请求时在 `X-Api-Key` 头携带：
+
+```bash
+curl http://localhost:19310/api/v1/shared/assets -H "X-Api-Key: ahk_xxxx"
+```
+
+返回码约定：凭据不存在/过期/已撤销 → `401`；凭据有效但缺少所需范围 → `403`（越权不消耗当日额度）；当日调用超过 `daily_limit` → `429`。撤销（`DELETE /shared-credentials/:id`）后新请求立即被拒绝。每次调用（含拒绝）都会按凭据记录方法、路径、状态码、结果与时间，可在 `GET /shared-credentials/:id/call-logs` 查看。
 
 枚举定义位置：`backend/internal/constants/enums.go`（AssetType / LicenseType / AssetStatus / ReviewResult）。
 

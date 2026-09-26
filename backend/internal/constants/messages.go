@@ -17,4 +17,10 @@ const (
 	MsgDownloadSuccess     = "download success"
 	MsgReviewSuccess       = "review submitted"
 	MsgCommercialForbidden = "commercial license assets require extra permission"
+
+	MsgSharedCredentialInvalid = "invalid or unknown shared credential"
+	MsgSharedCredentialExpired = "shared credential expired"
+	MsgSharedCredentialRevoked = "shared credential revoked"
+	MsgSharedQuotaExhausted    = "daily call quota exhausted"
+	MsgSharedScopeForbidden    = "shared credential scope not permitted"
 )

@@ -9,6 +9,7 @@ import (
 	"github.com/assethub/assethub/internal/config"
 	"github.com/assethub/assethub/internal/handler"
 	"github.com/assethub/assethub/internal/middleware"
+	"github.com/assethub/assethub/internal/service"
 	"github.com/assethub/assethub/internal/util"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -16,19 +17,21 @@ import (
 
 // Handlers aggregates every HTTP handler.
 type Handlers struct {
-	Health     *handler.HealthHandler
-	Auth       *handler.AuthHandler
-	Asset      *handler.AssetHandler
-	Category   *handler.CategoryHandler
-	Collection *handler.CollectionHandler
-	Download   *handler.DownloadHandler
-	Tag        *handler.TagHandler
-	Review     *handler.ReviewHandler
-	Audit      *handler.AuditHandler
+	Health           *handler.HealthHandler
+	Auth             *handler.AuthHandler
+	Asset            *handler.AssetHandler
+	Category         *handler.CategoryHandler
+	Collection       *handler.CollectionHandler
+	Download         *handler.DownloadHandler
+	Tag              *handler.TagHandler
+	Review           *handler.ReviewHandler
+	Audit            *handler.AuditHandler
+	SharedCredential *handler.SharedCredentialAdminHandler
+	Shared           *handler.SharedHandler
 }
 
 // New builds the gin engine with all routes and middlewares.
-func New(h Handlers, cfg *config.Config, jwtManager *util.JWTManager, rateLimiter *middleware.RateLimiter, db *client.MongoClient, redisClient *client.RedisClient, logger *slog.Logger) *gin.Engine {
+func New(h Handlers, cfg *config.Config, jwtManager *util.JWTManager, rateLimiter *middleware.RateLimiter, db *client.MongoClient, redisClient *client.RedisClient, sharedService *service.SharedCredentialService, logger *slog.Logger) *gin.Engine {
 	g := gin.New()
 	g.Use(gin.Recovery())
 	g.Use(middleware.ErrorHandler(logger))
@@ -41,10 +44,10 @@ func New(h Handlers, cfg *config.Config, jwtManager *util.JWTManager, rateLimite
 	g.GET("/swagger/doc.json", serveOpenAPIJSON)
 
 	api := g.Group("/api/v1")
-	registerAPI(api, h, cfg, jwtManager, rateLimiter, db)
+	registerAPI(api, h, cfg, jwtManager, rateLimiter, db, sharedService, logger)
 	// Nginx strips /api/ when proxy_pass ends with a slash; keep /v1 for parity.
 	proxyAPI := g.Group("/v1")
-	registerAPI(proxyAPI, h, cfg, jwtManager, rateLimiter, db)
+	registerAPI(proxyAPI, h, cfg, jwtManager, rateLimiter, db, sharedService, logger)
 	return g
 }
 
@@ -58,14 +61,14 @@ func corsConfig(cfg *config.Config) cors.Config {
 		AllowAllOrigins:  allowAll,
 		AllowOrigins:     origins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "X-Api-Key"},
 		ExposeHeaders:    []string{"X-Request-ID"},
 		AllowCredentials: !allowAll,
 		MaxAge:           12 * time.Hour,
 	}
 }
 
-func registerAPI(api *gin.RouterGroup, h Handlers, cfg *config.Config, jwtManager *util.JWTManager, rateLimiter *middleware.RateLimiter, db *client.MongoClient) {
+func registerAPI(api *gin.RouterGroup, h Handlers, cfg *config.Config, jwtManager *util.JWTManager, rateLimiter *middleware.RateLimiter, db *client.MongoClient, sharedService *service.SharedCredentialService, logger *slog.Logger) {
 	// Audit logging applies to all protected routes.
 	api.Use(middleware.AuditLogger(db.DB))
 	registerAuth(api, h, cfg, jwtManager, rateLimiter)
@@ -75,6 +78,7 @@ func registerAPI(api *gin.RouterGroup, h Handlers, cfg *config.Config, jwtManage
 	registerDownload(api, h, cfg, jwtManager, rateLimiter)
 	registerTag(api, h, jwtManager)
 	registerReview(api, h, jwtManager)
+	registerShared(api, h, jwtManager, sharedService, logger)
 }
 
 func serveSwaggerHTML(c *gin.Context) {
