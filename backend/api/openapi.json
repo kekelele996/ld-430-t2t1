@@ -23,7 +23,28 @@
     "/collections/{id}/assets/{assetId}": { "delete": { "summary": "移除素材", "tags": ["collection"] } },
     "/collections/{id}/members": { "post": { "summary": "添加协作成员", "tags": ["collection"] } },
     "/downloads": { "get": { "summary": "下载记录", "tags": ["download"] } },
-    "/audit-logs": { "get": { "summary": "审计日志 (Admin)", "tags": ["audit"] } }
+    "/audit-logs": { "get": { "summary": "审计日志 (Admin)", "tags": ["audit"] } },
+    "/team-credentials": {
+      "get": { "summary": "团队共享凭据列表（仅名称/范围/每日额度/末四位）", "tags": ["team-credential"], "security": [{ "BearerAuth": [] }] },
+      "post": { "summary": "创建团队共享凭据（明文 api_key 仅返回一次，Admin）", "tags": ["team-credential"], "security": [{ "BearerAuth": [] }] }
+    },
+    "/team-credentials/{id}": { "get": { "summary": "凭据详情 (Admin)", "tags": ["team-credential"], "security": [{ "BearerAuth": [] }] } },
+    "/team-credentials/{id}/revoke": { "post": { "summary": "撤销凭据，撤销后新请求立即 401 (Admin)", "tags": ["team-credential"], "security": [{ "BearerAuth": [] }] } },
+    "/team-credentials/{id}/access-logs": { "get": { "summary": "凭据调用记录（凭据/路径/结果/时间）", "tags": ["team-credential"], "security": [{ "BearerAuth": [] }] } },
+    "/shared/assets": { "get": { "summary": "共享接口-只读素材列表（需 assets:read，受每日额度限制）", "tags": ["shared"], "security": [{ "ApiKeyAuth": [] }] } },
+    "/shared/assets/{id}": { "get": { "summary": "共享接口-只读素材详情（需 assets:read）", "tags": ["shared"], "security": [{ "ApiKeyAuth": [] }] } },
+    "/shared/assets/{id}/download": { "post": { "summary": "共享接口-登记下载（需 downloads:write）", "tags": ["shared"], "security": [{ "ApiKeyAuth": [] }] } },
+    "/shared/collections": {
+      "get": { "summary": "共享接口-收藏夹列表（需 collections:write）", "tags": ["shared"], "security": [{ "ApiKeyAuth": [] }] },
+      "post": { "summary": "共享接口-创建收藏夹（需 collections:write）", "tags": ["shared"], "security": [{ "ApiKeyAuth": [] }] }
+    },
+    "/shared/collections/{id}/assets": { "post": { "summary": "共享接口-收藏夹加入素材（需 collections:write）", "tags": ["shared"], "security": [{ "ApiKeyAuth": [] }] } },
+    "/shared/collections/{id}/assets/{assetId}": { "delete": { "summary": "共享接口-收藏夹移除素材（需 collections:write）", "tags": ["shared"], "security": [{ "ApiKeyAuth": [] }] } }
   },
-  "components": { "securitySchemes": { "BearerAuth": { "type": "http", "scheme": "bearer" } } }
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": { "type": "http", "scheme": "bearer" },
+      "ApiKeyAuth": { "type": "apiKey", "in": "header", "name": "X-Api-Key", "description": "团队共享凭据，形如 ahk_<keyId><secret>；也可使用 Authorization: Bearer。无效/过期/撤销返回 401，越权 403，额度用尽 429。" }
+    }
+  }
 }

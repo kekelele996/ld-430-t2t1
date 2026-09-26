@@ -51,6 +51,33 @@ func (r *RedisClient) Set(ctx context.Context, key string, value interface{}, tt
 	return r.Client.Set(ctx, key, value, ttl).Err()
 }
 
+// IncrDailyCredentialUsage increments the current UTC-day call counter for a team
+// credential, expiring the key at UTC midnight. It reports whether the counter
+// has passed the credential's daily limit.
+func (r *RedisClient) IncrDailyCredentialUsage(ctx context.Context, credentialID string, limit int) (int64, bool, error) {
+	now := time.Now().UTC()
+	day := now.Format("20060102")
+	key := fmt.Sprintf("credential:quota:%s:%s", credentialID, day)
+	count, err := r.Client.Incr(ctx, key).Result()
+	if err != nil {
+		return 0, false, fmt.Errorf("redis incr %s: %w", key, err)
+	}
+	if count == 1 {
+		r.Client.Expire(ctx, key, durationUntilUTCMidnight(now))
+	}
+	return count, count > int64(limit), nil
+}
+
+// durationUntilUTCMidnight returns the duration from t to the next UTC midnight.
+func durationUntilUTCMidnight(t time.Time) time.Duration {
+	next := t.Add(24 * time.Hour).Truncate(24 * time.Hour)
+	d := next.Sub(t)
+	if d <= 0 {
+		return 24 * time.Hour
+	}
+	return d
+}
+
 // Close closes the underlying client.
 func (r *RedisClient) Close() error {
 	return r.Client.Close()

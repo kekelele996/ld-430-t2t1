@@ -42,6 +42,7 @@ go run ./cmd/server
 - 权限共享与 RBAC：Admin / Moderator / Uploader / Viewer，Commercial 许可素材需额外权限
 - 审计日志：素材上传、审核、下载、许可变更全程留痕
 - 接口限流：下载每 IP 每分钟 10 次、上传每 IP 每小时 20 次（Redis 计数）
+- 团队共享凭据：面向外部服务开放素材库，无需交付员工登录凭据；管理员可按「只读素材 / 维护收藏夹 / 登记下载」分别授权并设置每日调用上限，明文仅展示一次，越权 403、过期或撤销 401、额度用尽 429
 
 ## 技术栈
 
@@ -63,12 +64,12 @@ go run ./cmd/server
 │       ├── service/                # 业务逻辑层（含 MinIO storage、搜索）
 │       ├── handler/                # HTTP 处理器
 │       ├── router/                 # Gin 路由注册（/api/v1）
-│       ├── middleware/             # auth/rbac/audit/error/rate_limiter/request_logger/validation
+│       ├── middleware/             # auth/rbac/shared_auth/scope/credential_quota/credential_access_log/audit/error/rate_limiter/request_logger/validation
 │       ├── dto/                    # 请求/响应结构体与校验
-│       ├── constants/              # 枚举、错误码、消息、日志模板
+│       ├── constants/              # 枚举（含凭据范围/状态）、错误码、消息、日志模板
 │       ├── errors/                 # 统一错误类型
-│       ├── util/                   # jwt/logger/response/file_validator/thumbnail/password
-│       └── client/                 # mongo/redis/minio 客户端
+│       ├── util/                   # jwt/api_key/logger/response/file_validator/thumbnail/password
+│       └── client/                 # mongo/redis（含凭据每日额度计数）/minio 客户端
 │   └── database/seeds/             # 种子数据（角色、分类、标签、管理员）
 ├── api/openapi.json                # OpenAPI 文档（/swagger/doc.json）
 ├── docker-compose.yml
@@ -98,6 +99,58 @@ go run ./cmd/server
 | POST | /collections/:id/members | 添加协作成员 |
 | GET | /downloads | 下载记录 |
 | GET | /audit-logs | 审计日志（Admin） |
+| POST | /team-credentials | 创建团队共享凭据（Admin，明文仅返回一次） |
+| GET | /team-credentials | 凭据列表（仅名称、范围、每日额度、末四位，Admin） |
+| GET | /team-credentials/:id | 凭据详情（Admin） |
+| POST | /team-credentials/:id/revoke | 撤销凭据（Admin，撤销后新请求立即 401） |
+| GET | /team-credentials/:id/access-logs | 凭据调用记录（Admin） |
+| GET | /shared/assets | 共享：只读素材列表（assets:read） |
+| GET | /shared/assets/:id | 共享：只读素材详情（assets:read） |
+| POST | /shared/assets/:id/download | 共享：登记下载（downloads:write） |
+| GET/POST | /shared/collections | 共享：收藏夹列表/创建（collections:write） |
+| POST | /shared/collections/:id/assets | 共享：收藏夹加入素材（collections:write） |
+| DELETE | /shared/collections/:id/assets/:assetId | 共享：收藏夹移除素材（collections:write） |
+
+### 团队共享凭据（外部服务接入）
+
+设计团队向外部服务开放素材库时，无需交出员工登录凭据，改为签发**团队共享凭据（API Key）**。
+
+- 管理员通过 `POST /api/v1/team-credentials` 创建，请求体：
+
+  ```json
+  {
+    "name": "外部设计平台",
+    "scopes": ["assets:read", "collections:write", "downloads:write"],
+    "daily_limit": 1000,
+    "expires_at": "2026-12-31T23:59:59Z"
+  }
+  ```
+
+  授权范围（可任选组合）：
+
+  | scope | 能力 |
+  | --- | --- |
+  | `assets:read` | 只读素材（列表、详情，仅返回已发布素材） |
+  | `collections:write` | 维护收藏夹（创建、列出、加入/移除素材） |
+  | `downloads:write` | 登记下载 |
+
+  `daily_limit` 为该凭据每日（UTC 自然日）调用上限；`expires_at` 可省略表示长期有效。
+
+- 创建响应中的 `api_key`（形如 `ahk_<keyId><secret>`）**明文仅展示这一次**，后端只存其 SHA-256 哈希与末四位；`GET /team-credentials` 列表只返回 **名称、范围、每日额度、末四位**。
+- 外部请求在共享接口上携带凭据调用（两种方式等价）：
+  - 请求头 `X-Api-Key: ahk_...`
+  - 请求头 `Authorization: Bearer ahk_...`
+- 安全语义：
+
+  | 场景 | 状态码 |
+  | --- | --- |
+  | 凭据缺失 / 无法识别 / 密钥错误 | 401 |
+  | 凭据已过期或已撤销（撤销后新请求立即拒绝） | 401 |
+  | 请求超出凭据授权范围（越权） | 403 |
+  | 当日调用额度用尽 | 429 |
+  | 正常调用 | 2xx |
+
+- 每次共享接口调用都会写入调用记录（凭据、方法、路径、结果状态码、IP、时间），可通过 `GET /team-credentials/:id/access-logs` 查询。
 
 统一响应格式：`{ "code": 0, "message": "ok", "data": ... }`。
 

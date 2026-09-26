@@ -10,3 +10,9 @@ import (
 func IsNotFound(err error) bool {
 	return stderrors.Is(err, repository.ErrNotFound)
 }
+
+// AsBusinessError reports whether err is (or wraps) a BusinessError and assigns
+// it to target when so.
+func AsBusinessError(err error, target **BusinessError) bool {
+	return stderrors.As(err, target)
+}

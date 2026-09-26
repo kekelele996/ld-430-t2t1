@@ -74,6 +74,8 @@ func run(cfg *config.Config, logger *slog.Logger) error {
 	tagRepo := repository.NewTagRepository(db)
 	reviewRepo := repository.NewReviewRecordRepository(db)
 	auditRepo := repository.NewAuditLogRepository(db)
+	teamCredentialRepo := repository.NewTeamCredentialRepository(db)
+	credentialAccessLogRepo := repository.NewCredentialAccessLogRepository(db)
 
 	jwtManager := util.NewJWTManager(cfg.JWT.Secret, cfg.JWT.Issuer, cfg.JWT.ExpiresIn)
 	authService := service.NewAuthService(userRepo, roleRepo, jwtManager, logger)
@@ -87,22 +89,31 @@ func run(cfg *config.Config, logger *slog.Logger) error {
 	tagService := service.NewTagService(tagRepo, logger)
 	reviewService := service.NewReviewService(reviewRepo, assetRepo, logger)
 	auditService := service.NewAuditService(auditRepo, logger)
+	teamCredentialService := service.NewTeamCredentialService(teamCredentialRepo, credentialAccessLogRepo, redisClient, logger)
+	sharedService := service.NewSharedService(assetRepo, downloadRepo, searchService, collectionService, logger)
 
 	rateLimiter := middleware.NewRateLimiter(redisClient, logger)
-
-	handlers := router.Handlers{
-		Health:     handler.NewHealthHandler(mongoClient.Client, redisClient.Client),
-		Auth:       handler.NewAuthHandler(authService),
-		Asset:      handler.NewAssetHandler(assetService),
-		Category:   handler.NewCategoryHandler(categoryService),
-		Collection: handler.NewCollectionHandler(collectionService),
-		Download:   handler.NewDownloadHandler(downloadService),
-		Tag:        handler.NewTagHandler(tagService),
-		Review:     handler.NewReviewHandler(reviewService),
-		Audit:      handler.NewAuditHandler(auditService),
+	sharedCredentialServices := &middleware.SharedCredentialServices{
+		Authenticator: teamCredentialService,
+		Quota:         teamCredentialService,
+		AccessLogger:  teamCredentialService,
 	}
 
-	engine := router.New(handlers, cfg, jwtManager, rateLimiter, mongoClient, redisClient, logger)
+	handlers := router.Handlers{
+		Health:         handler.NewHealthHandler(mongoClient.Client, redisClient.Client),
+		Auth:           handler.NewAuthHandler(authService),
+		Asset:          handler.NewAssetHandler(assetService),
+		Category:       handler.NewCategoryHandler(categoryService),
+		Collection:     handler.NewCollectionHandler(collectionService),
+		Download:       handler.NewDownloadHandler(downloadService),
+		Tag:            handler.NewTagHandler(tagService),
+		Review:         handler.NewReviewHandler(reviewService),
+		Audit:          handler.NewAuditHandler(auditService),
+		TeamCredential: handler.NewTeamCredentialHandler(teamCredentialService),
+		Shared:         handler.NewSharedHandler(sharedService),
+	}
+
+	engine := router.New(handlers, cfg, jwtManager, rateLimiter, mongoClient, redisClient, sharedCredentialServices, logger)
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
 		Handler:      engine,

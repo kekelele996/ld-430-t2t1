@@ -17,4 +17,9 @@ const (
 	MsgDownloadSuccess     = "download success"
 	MsgReviewSuccess       = "review submitted"
 	MsgCommercialForbidden = "commercial license assets require extra permission"
+
+	MsgCredentialInvalid   = "invalid or missing api credential"
+	MsgCredentialRevoked   = "api credential revoked"
+	MsgCredentialExpired   = "api credential expired"
+	MsgCredentialQuotaUsed = "daily credential call quota exhausted"
 )

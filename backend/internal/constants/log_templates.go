@@ -16,4 +16,5 @@ const (
 	LogMinioError     = "minio operation failed"
 	LogCacheSet       = "cache set"
 	LogCacheHit       = "cache hit"
+	LogCredentialUsed = "team credential used"
 )
